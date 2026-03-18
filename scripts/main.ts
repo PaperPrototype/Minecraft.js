@@ -134,7 +134,7 @@ document.addEventListener('keydown', e => {
 });
 
 // Load default map
-const res = await fetch('/assets/arica.vxl');
+const res = await fetch('/arica.vxl');
 if (res.ok) {
   manager.addFromBuffer('arica', await res.arrayBuffer());
 }
