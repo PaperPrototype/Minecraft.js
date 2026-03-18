@@ -24,6 +24,9 @@ const fragmentShader = /* glsl */`
   uniform sampler3D uVoxels;
   uniform vec3      uCamPos;
   uniform mat4      uInvModel;
+  uniform mat4      uModelMat;
+  uniform mat4      uProjection;
+  uniform mat4      uView;
   uniform vec3      uVolSize;
   uniform vec3      uSunDir;
   uniform vec3      uHighlight;
@@ -64,7 +67,10 @@ const fragmentShader = /* glsl */`
 
       vec3 uvw   = (vec3(voxel) + 0.5) / uVolSize;
       vec4 texel = texture(uVoxels, uvw);
-      if (texel.a > 0.5) { hitVoxel = voxel; return vec4(texel.rgb, 1.0); }
+      if (texel.a > 0.5) {
+        hitVoxel = voxel;
+        return vec4(texel.rgb, 1.0);
+      }
 
       if (tMax.x < tMax.y && tMax.x < tMax.z) {
         if (tMax.x > tEnd) break;
@@ -99,6 +105,20 @@ const fragmentShader = /* glsl */`
     vec4  hit = dda(localRo, localRd, tStart, tEnd, hitNormal, hitVoxel);
     if (hit.a < 0.5) discard;
 
+    // ── Write correct fragment depth ──────────────────────────────────────────
+    // The bounding-box proxy geometry gives the wrong hardware depth (it records
+    // the box wall, not the raymarched surface). Reconstruct the actual hit point
+    // in clip space and write gl_FragDepth so that multiple overlapping VoxelMaps
+    // depth-sort correctly against each other and against other scene objects.
+    // Reconstruct hit position from the voxel integer coords rather than from
+    // tVoxel — localRd is not normalised (it carries the model's scale), so
+    // using t would apply scale twice when we push through uModelMat.
+    // Voxel-centre is accurate to within 0.5 local units, which is well below
+    // any z-fighting threshold and perfectly correct for inter-map sorting.
+    vec3 localHit = vec3(hitVoxel) + 0.5;
+    vec4 clipPos  = uProjection * uView * (uModelMat * vec4(localHit, 1.0));
+    gl_FragDepth  = (clipPos.z / clipPos.w) * 0.5 + 0.5;
+
     vec3 worldNormal = normalize((transpose(uInvModel) * vec4(hitNormal, 0.0)).xyz);
     vec3 albedo   = hit.rgb;
     float nDotL   = max(dot(worldNormal, uSunDir), 0.0);
@@ -111,7 +131,9 @@ const fragmentShader = /* glsl */`
     if (uSelected == 1)
       colour = mix(colour, vec3(0.3, 0.7, 1.0), 0.08);
 
-    float fogFac = 1.0 - exp(-tStart * 0.0018);
+    vec3  worldHitPos = (uModelMat * vec4(vec3(hitVoxel) + 0.5, 1.0)).xyz;
+    float fogDist = length(worldHitPos - uCamPos);
+    float fogFac = 1.0 - exp(-fogDist * 0.0018);
     colour       = mix(colour, vec3(0.502, 0.627, 0.878), clamp(fogFac, 0.0, 1.0));
     gl_FragColor = vec4(colour, 1.0);
   }
@@ -141,13 +163,16 @@ function makeMat(tex: THREE.Data3DTexture, w: number, h: number, d: number): THR
     vertexShader,
     fragmentShader,
     uniforms: {
-      uVoxels:    { value: tex },
-      uCamPos:    { value: new THREE.Vector3() },
-      uInvModel:  { value: new THREE.Matrix4() },
-      uVolSize:   { value: new THREE.Vector3(w, h, d) },
-      uSunDir:    { value: new THREE.Vector3(0.55, 1.0, 0.35).normalize() },
-      uHighlight: { value: new THREE.Vector3(-1, -1, -1) },
-      uSelected:  { value: 0 },
+      uVoxels:      { value: tex },
+      uCamPos:      { value: new THREE.Vector3() },
+      uInvModel:    { value: new THREE.Matrix4() },
+      uModelMat:    { value: new THREE.Matrix4() },
+      uProjection:  { value: new THREE.Matrix4() },
+      uView:        { value: new THREE.Matrix4() },
+      uVolSize:     { value: new THREE.Vector3(w, h, d) },
+      uSunDir:      { value: new THREE.Vector3(0.55, 1.0, 0.35).normalize() },
+      uHighlight:   { value: new THREE.Vector3(-1, -1, -1) },
+      uSelected:    { value: 0 },
     },
     side:       THREE.BackSide,
     depthWrite: true,
@@ -567,6 +592,9 @@ export class VoxelMap extends THREE.Mesh {
     camera.getWorldPosition(this.material.uniforms.uCamPos.value);
     this._invModel.copy(this.matrixWorld).invert();
     this.material.uniforms.uInvModel.value.copy(this._invModel);
+    this.material.uniforms.uModelMat.value.copy(this.matrixWorld);
+    this.material.uniforms.uProjection.value.copy((camera as THREE.PerspectiveCamera).projectionMatrix);
+    this.material.uniforms.uView.value.copy(camera.matrixWorldInverse);
   }
 
   /**
