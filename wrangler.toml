@@ -1,2 +1,4 @@
+name = "voxel-loader"
+
 [assets]
 directory = "dist"
