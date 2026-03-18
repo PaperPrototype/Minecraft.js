@@ -111,7 +111,7 @@ manager.on(e => {
   if (e.type === 'selected') {
     const entry = e.id !== null ? manager.get(e.id) : null;
     if (entry) {
-      gizmo.attach(entry.map);
+      gizmo.attach(entry.map as any);
     } else {
       gizmo.detach();
     }

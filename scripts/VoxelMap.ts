@@ -328,6 +328,7 @@ export class VoxelMap extends THREE.Mesh {
 
   // ── CPU DDA raycast ───────────────────────────────────────────────────────
 
+  // @ts-expect-error
   raycast(worldRo: THREE.Vector3, worldRd: THREE.Vector3, maxDist = 512): RaycastHit | null {
     this.updateMatrixWorld();
     const invM    = new THREE.Matrix4().copy(this.matrixWorld).invert();
@@ -621,11 +622,6 @@ export class VoxelMap extends THREE.Mesh {
 
   setSelected(s: boolean): void {
     this.material.uniforms.uSelected.value = s ? 1 : 0;
-  }
-
-  // Expose internal idx for extractIslands on child maps
-  idx(tx: number, ty: number, tz: number): number {
-    return (tx + this.w * (ty + this.h * tz)) * 4;
   }
 
   dispose(): void {

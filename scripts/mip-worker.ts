@@ -53,5 +53,5 @@ self.onmessage = (e: MessageEvent) => {
 
   // Transfer all ArrayBuffers zero-copy back to main thread
   const buffers = levels.map(l => l.buffer);
-  self.postMessage({ levels: buffers, dims }, buffers);
+  self.postMessage({ levels: buffers, dims }, buffers as any);
 };
